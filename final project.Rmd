@@ -1,0 +1,1557 @@
+---
+title: "房屋特性與不動產交易標的視覺化"
+author: "109071023 許譽瀚, 108071039 劉胤麒"
+date: "`r Sys.Date()`"
+runtime: shiny
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    toc_collapsed: true
+    toc_depth: 4
+    number_selections: true
+---
+<!--yeti, cerulean-->
+<style type = text/css>
+  body{
+  font-family : "Cambria";
+  font-size : "18";
+  text-align : "justify";
+}
+h1.title{
+  text-align : center;
+  font-size : 40px;
+}
+.author{
+  text-align : center;
+  font-size : 24px;
+  font-family : "Cambria", "標楷體";
+}
+.date{
+  text-align : center;
+  font-size : 24px;
+  font-family : "Cambria";
+}
+
+</style>
+```{r, include = F, echo = F, warning = F}
+library(leaflet)
+library(magrittr)
+library(shiny)
+library(tidyverse)
+library(stringr)
+library(filesstrings)
+library(knitr)
+library(kableExtra)  
+library(dplyr)
+library(ggplot2)
+library(tidytext)
+library(reticulate)
+library(ggmap)
+library(utf8)
+library(writexl)
+library(dplyr)
+library(naniar)   # 次序缺失直值
+library(visdat)   # 次序缺失值包含資料類別
+library(DT)
+library(shinydashboard)
+library(RColorBrewer)
+library(shinymaterial)
+library(shinyjs)
+library(htmlwidgets)
+
+ptable = function(df,digits = getOption("digits"),size = 14){
+  df %>% knitr::kable(digits = digits) %>% 
+    kable_classic(lightable_options = c("striped", "hover", "condensed"),
+                  fixed_thead = list(enabled = T, 
+                                     background = "lavender"),
+                  font_size = size, full_width = F,
+                  html_font = "helvetica")
+}
+```
+
+```{r, setup, include = F}
+# 全局布置
+knitr::opts_chunk$set(include = TRUE)
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = TRUE)
+knitr::opts_chunk$set(cache = TRUE)
+```
+
+
+## *Abstract* 
+
+<br>
+<br>
+<blockquote>
+In this project, we present a web-based interactive visualization and analysis tool for real estate data. The tool leverages the Shiny framework in R to create an intuitive and user-friendly interface for exploring real estate transactions in different cities. The main features of the tool include an interactive map, data filtering options, and visual representations of property prices.
+<br>
+The interactive map allows users to navigate through different cities and view real estate transactions as markers on the map. The markers are color-coded based on the type of transaction, such as real estate, presold estate, or rental estate. Users can also filter the data based on various criteria, such as city, transaction type, and district.
+<br>
+To enhance the user experience, the tool incorporates additional functionalities such as pop-ups that provide detailed information about specific properties when clicked. Moreover, the tool allows users to switch to a full-screen mode for a more immersive and comprehensive view of the map.
+<br>
+In the second part of the preliminaries, we explore the correlation between property prices and other variables within the dataset. The tool provides visualizations and statistical measures to analyze the relationship between price and factors such as property size, location, and number of rooms. Users can dynamically adjust the visualizations and explore different correlations to gain insights into the key factors influencing property prices.
+<br>
+The underlying data processing involves data retrieval, cleaning, and transformation. The tool utilizes R packages such as leaflet for creating the interactive map, shiny for developing the web application, and shinyjs for handling additional UI features such as full-screen mode. Statistical analyses and correlation calculations are performed using R's built-in functions and packages such as cor and ggplot2.
+<br>
+Through this project, we aim to provide a powerful and accessible tool for users to explore and analyze real estate data. The interactive nature of the tool allows users to gain insights into real estate trends, make informed decisions, and explore potential investment opportunities. The inclusion of correlation analysis adds an additional layer of understanding to the relationship between property prices and various factors.
+</blockquote>
+
+<br>
+<br>
+
+---
+
+## *Preliminaries - Correlations within attributes and price* {.tabset}
+
+
+### About this part
+
+<br>
+<blockquote>
+In this preliminary analysis, we will focus on exploring the correlations between specific attributes of real estate properties and their corresponding prices. Specifically, we will examine the relationship between the type of berth (parking facility), the shifting levels, and the total floor levels of properties.
+<br>
+The type of berth refers to the parking facility available for the property. It can include options such as open parking spaces, covered parking areas, or even underground parking lots. By analyzing the correlation between the type of berth and property prices, we can gain insights into the importance of parking amenities in influencing property values.
+<br>
+Next, we will delve into the shifting levels of properties. Shifting levels refer to the specific floor level on which a property is situated within a building. Higher shifting levels are often associated with better views, increased privacy, and reduced noise pollution. By examining the correlation between shifting levels and property prices, we can understand how this attribute impacts the value of a property.
+<br>
+Lastly, we will explore the correlation between the total floor levels of properties and their prices. Total floor levels indicate the number of floors within a building. Properties situated on higher floors often offer advantages such as better views, increased natural light, and a sense of exclusivity. By analyzing the correlation between total floor levels and property prices, we can uncover the influence of vertical positioning on property values.
+<br>
+Through this analysis, we aim to provide insights into the correlations between specific attributes related to parking facilities, shifting levels, and total floor levels, and the prices of real estate properties. Understanding these relationships can help buyers, sellers, and investors make informed decisions and gain a deeper understanding of the factors driving real estate prices.
+</blockquote>
+<br>
+
+
+### Example 1: Price ~ the berth category
+<br>
+
+```{r, include = F, echo = F, warning = F}
+alphabat <- c()
+alphabat$id <- c("a", "b", "c", "d", "e", "f", "g", "h", "j", "k", "m", "n", "p", "q", "t", "u", "v", "x", "i", "o")
+
+alphabat$city <- c("臺北市", "臺中市", "基隆市", "臺南市", "高雄市", "新北市", "宜蘭縣", "桃園市", "新竹縣", "苗栗縣", "南投縣", "彰化縣", "雲林縣", "嘉義縣", "屏東縣", "花蓮縣", "臺東縣", "澎湖縣", "嘉義市", "新竹市")
+
+id_to_city <- c(
+  "a" = "臺北市",
+  "b" = "臺中市",
+  "c" = "基隆市",
+  "d" = "臺南市",
+  "e" = "高雄市",
+  "f" = "新北市",
+  "g" = "宜蘭縣",
+  "h" = "桃園市",
+  "j" = "新竹縣",
+  "k" = "苗栗縣",
+  "m" = "南投縣",
+  "n" = "彰化縣",
+  "p" = "雲林縣",
+  "q" = "嘉義縣",
+  "t" = "屏東縣",
+  "u" = "花蓮縣",
+  "v" = "臺東縣",
+  "x" = "澎湖縣",
+  "i" = "嘉義市",
+  "o" = "新竹市"
+)
+
+city_to_id <- c(
+  "臺北市" = "a",
+  "臺中市" = "b",
+  "基隆市" = "c",
+  "臺南市" = "d",
+  "高雄市" = "e",
+  "新北市" = "f",
+  "宜蘭縣" = "g",
+  "桃園市" = "h",
+  "新竹縣" = "j",
+  "苗栗縣" = "k",
+  "南投縣" = "m",
+  "彰化縣" = "n",
+  "雲林縣" = "p",
+  "嘉義縣" = "q",
+  "屏東縣" = "t",
+  "花蓮縣" = "u",
+  "臺東縣" = "v",
+  "澎湖縣" = "x",
+  "嘉義市" = "i",
+  "新竹市" = "o"
+)
+
+
+path = "C:/Users/je604/OneDrive/桌面/大數據/total_data/season 4"
+whole_data = file.path(path, dir(path))
+
+taipei_data_amount = str_subset(whole_data, pattern = "[a]_lvr_land_[a-z].csv$") %>% c() 
+taichung_data_amount = str_subset(whole_data, pattern = "[b]_lvr_land_[a-z].csv$") %>% c()  
+kilong_data_amount = str_subset(whole_data, pattern = "[c]_lvr_land_[a-z].csv$") %>% c()  
+tainan_data_amount = str_subset(whole_data, pattern = "[d]_lvr_land_[a-z].csv$") %>% c()   
+kaoshung_data_amount = str_subset(whole_data, pattern = "[e]_lvr_land_[a-z].csv$") %>% c()   
+newtaipei_data_amount = str_subset(whole_data, pattern = "[f]_lvr_land_[a-z].csv$") %>% c()   
+yilan_data_amount = str_subset(whole_data, pattern = "[g]_lvr_land_[a-z].csv$") %>% c()   
+taoyun_data_amount = str_subset(whole_data, pattern = "[h]_lvr_land_[a-z].csv$") %>% c()   
+old_hsinchu_data_amount = str_subset(whole_data, pattern = "[j]_lvr_land_[a-z].csv$") %>% c()   
+miaoli_data_amount = str_subset(whole_data, pattern = "[k]_lvr_land_[a-z].csv$") %>% c()   
+old_taichung_data_amount = str_subset(whole_data, pattern = "[l]_lvr_land_[a-z].csv$") %>% c()  
+nantou_data_amount = str_subset(whole_data, pattern = "[m]_lvr_land_[a-z].csv$") %>% c()  
+changhua_data_amount = str_subset(whole_data, pattern = "[n]_lvr_land_[a-z].csv$") %>% c()  
+yunlin_data_amount = str_subset(whole_data, pattern = "[p]_lvr_land_[a-z].csv$") %>% c()  
+old_jiayi_data_amount = str_subset(whole_data, pattern = "[q]_lvr_land_[a-z].csv$") %>% c()  
+old_tainan_data_amount = str_subset(whole_data, pattern = "[r]_lvr_land_[a-z].csv$") %>% c()  
+old_kaoshung_data_amount = str_subset(whole_data, pattern = "[s]_lvr_land_[a-z].csv$") %>% c()  
+pintung_data_amount = str_subset(whole_data, pattern = "[t]_lvr_land_[a-z].csv$") %>% c()  
+hualiang_data_amount = str_subset(whole_data, pattern = "[u]_lvr_land_[a-z].csv$") %>% c()  
+taitung_data_amount = str_subset(whole_data, pattern = "[v]_lvr_land_[a-z].csv$") %>% c()  
+punghu_data_amount = str_subset(whole_data, pattern = "[x]_lvr_land_[a-z].csv$") %>% c()  
+yanming_data_amount = str_subset(whole_data, pattern = "[y]_lvr_land_[a-z].csv$") %>% c()  
+jiayi_data_amount = str_subset(whole_data, pattern = "[i]_lvr_land_[a-z].csv$") %>% c()  
+hsinchu_data_amount = str_subset(whole_data, pattern = "[o]_lvr_land_[a-z].csv$") %>% c()  
+
+
+
+
+find_dataamount <- function(ls_datas){
+  amount = 0
+  for (file in ls_datas){
+    f = read.csv(file)
+    amount = amount + nrow(f)
+  }
+  amount
+}
+
+data_amount <- c(
+  find_dataamount(taipei_data_amount),
+  find_dataamount(taichung_data_amount),
+  find_dataamount(kilong_data_amount),
+  find_dataamount(tainan_data_amount),
+  find_dataamount(kaoshung_data_amount),
+  find_dataamount(newtaipei_data_amount),
+  find_dataamount(yilan_data_amount),
+  find_dataamount(taoyun_data_amount),
+  find_dataamount(old_hsinchu_data_amount),
+  find_dataamount(miaoli_data_amount),
+  find_dataamount(nantou_data_amount),
+  find_dataamount(changhua_data_amount),
+  find_dataamount(yunlin_data_amount),
+  find_dataamount(old_jiayi_data_amount),
+  find_dataamount(pintung_data_amount),
+  find_dataamount(hualiang_data_amount),
+  find_dataamount(taitung_data_amount),
+  find_dataamount(punghu_data_amount),
+  find_dataamount(jiayi_data_amount),
+  find_dataamount(hsinchu_data_amount)
+)
+
+path = "C:/Users/je604/OneDrive/桌面/大數據/tidy_data"
+
+file_path <- file.path(path, dir(path))
+whole_datas = dir(path)
+
+# No data : 臺中縣, 臺南縣, 高雄縣, 陽明山
+
+
+real_estate_tg <- str_subset(whole_datas, pattern = "[a-z]_lvr_land_[a].csv$") %>% c()
+real_estate_filepath <- file.path(path, real_estate_tg)
+
+presold_estate_tg <- str_subset(whole_datas, pattern = "[a-z]_lvr_land_[b].csv$") %>% c()
+presold_estate_filepath <- file.path(path, presold_estate_tg)
+
+rental_estate_tg <- str_subset(whole_datas, pattern = "[a-z]_lvr_land_[c].csv$") %>% c()
+rental_estate_filepath <- file.path(path, real_estate_tg)
+
+path = "C:/Users/je604/OneDrive/桌面/大數據/tidy_data"
+all_files <- dir(path)
+
+case_to_order <- c("不動產" = 1, "預售屋" = 2, "租賃" = 3)
+
+regex_id <- function(city_alpha){
+  pattern = paste0("[", city_alpha, "]_lvr_land_[a-z]\\.csv$", sep = "")
+  pattern
+}
+
+get_file_path <- function(city_name){
+  
+  file.path(path, grep(pattern= regex_id(city_to_id[city_name]), x = all_files, value = T))
+}
+
+####========每個城市所含有的房地產資料類型
+get_case_condition <- function(city_name){
+  container <- get_file_path(city_name)
+  city_alpha <- city_to_id[city_name]
+  
+  real_pattern = paste("^C:/Users/je604/OneDrive/桌面/大數據/tidy_data/[", city_alpha,"]_lvr_land_a.csv$", sep = "")
+  
+  presold_pattern =paste ("^C:/Users/je604/OneDrive/桌面/大數據/tidy_data/[", city_alpha,"]_lvr_land_b.csv$", sep = "")
+  
+  rental_pattern = paste("^C:/Users/je604/OneDrive/桌面/大數據/tidy_data/[", city_alpha,"]_lvr_land_c.csv$", sep = "")
+  
+  result <- c()
+  for (i in 1: length(container)){
+    #print(real_pattern)
+    if (grepl(real_pattern, container[i])) result <- append(result, "不動產")
+    
+    #print(presold_pattern)
+    if (grepl(presold_pattern, container[i])) result <- append(result, "預售屋")
+    
+    #print(rental_pattern)
+    if (grepl(rental_pattern, container[i])) result <- append(result, "租賃")
+  }
+  result
+}
+
+path = "C:/Users/je604/OneDrive/桌面/大數據/tidy_data"
+all_files <- dir(path)
+case_to_order <- c("不動產" = 1, "預售屋" = 2, "租賃" = 3)
+case_to_alpha = c("不動產" = "a", "預售屋" = "b", "租賃" = "c")
+
+
+get_filepath_with_case <- function(city_name, case_type){
+  filepath = file.path(path, grep(pattern= regex_id(city_to_id[city_name]), x = all_files, value = T))
+  city_alpha = city_to_id[city_name]
+  case_alpha = case_to_alpha[case_type]
+  
+  f <- str_subset(filepath, pattern = paste0(path, "/", "[", city_alpha, "]_lvr_land_[", case_alpha, "].csv$", sep = ""))
+  f
+  
+}
+
+get_district <- function(city_name, case_type){
+  city_case_path = get_filepath_with_case(city_name, case_type)
+  f <- read.csv(city_case_path)
+  district_name <- f[2: nrow(f), 1] %>% unique() %>% c()
+  district_name
+}
+
+
+
+
+
+path = "C:/Users/je604/OneDrive/桌面/大數據/tidy_data"
+all_files <- dir(path)
+all_file_path = file.path(path, all_files)
+
+```
+
+```{r, include = T, echo = F}
+all_city_real <- c(
+  taipei = str_subset(whole_data, pattern = "[a]_lvr_land_[a].csv$"), 
+  taichung = str_subset(whole_data, pattern = "[b]_lvr_land_[a].csv$") ,  
+  kilong  = str_subset(whole_data, pattern = "[c]_lvr_land_[a].csv$") ,  
+  tainan = str_subset(whole_data, pattern = "[d]_lvr_land_[a].csv$") ,   
+  kaoshung = str_subset(whole_data, pattern = "[e]_lvr_land_[a].csv$") ,   
+  newtaipei  = str_subset(whole_data, pattern = "[f]_lvr_land_[a].csv$") ,   
+  yilan = str_subset(whole_data, pattern = "[g]_lvr_land_[a].csv$") ,   
+  taoyun = str_subset(whole_data, pattern = "[h]_lvr_land_[a].csv$") ,   
+  old_hsinchu  = str_subset(whole_data, pattern = "[j]_lvr_land_[a].csv$") ,   
+  miaoli = str_subset(whole_data, pattern = "[k]_lvr_land_[a].csv$") ,   
+  nantou  = str_subset(whole_data, pattern = "[m]_lvr_land_[a].csv$") ,  
+  changhua  = str_subset(whole_data, pattern = "[n]_lvr_land_[a].csv$") ,  
+  yunlin  = str_subset(whole_data, pattern = "[p]_lvr_land_[a].csv$") ,  
+  old_jiayi = str_subset(whole_data, pattern = "[q]_lvr_land_[a].csv$") ,  
+  pintung = str_subset(whole_data, pattern = "[t]_lvr_land_[a].csv$") ,  
+  hualiang = str_subset(whole_data, pattern = "[u]_lvr_land_[a].csv$") ,  
+  taitung = str_subset(whole_data, pattern = "[v]_lvr_land_[a].csv$") ,  
+  punghu  = str_subset(whole_data, pattern = "[x]_lvr_land_[a].csv$") ,  
+  jiayi = str_subset(whole_data, pattern = "[i]_lvr_land_[a].csv$") , 
+  hsinchu  = str_subset(whole_data, pattern = "[o]_lvr_land_[a].csv$")   
+)
+```
+
+```{r, include=T, echo = F}
+
+# 主要建材 與價格關係
+park_price_cor <- data.frame()
+
+for (real in names(all_city_real)){
+  #print(real)
+  f <- read.csv(all_city_real[real], encoding = "UTF-8")
+  #print(f)
+  f <- f[2:nrow(f),]
+
+  
+  tg_row <- which(f$'車位類別' != "" & f$'車位總價元' != "0")
+  f <- f[tg_row,]
+  len = nrow(f)
+  
+  within_city_data <- data.frame(city = rep(real, times = len),
+                                 park = f$'車位類別',
+                                 price = as.numeric(f$'車位總價元'))
+  
+  
+  
+  park_price_cor <- rbind(park_price_cor, within_city_data)
+}
+
+```
+
+```{r, include = T, echo = F, out.width="200%", out.height = "120%", warning=F}
+
+ggplot(park_price_cor, aes(
+  x = park,
+  y = price/10000,
+  color = park
+)) + geom_point(alpha = 0.2) + 
+  facet_wrap(~city, ncol = 6, scales = "free_x")+
+  scale_y_continuous(limits = c(0, 2500)) +
+  theme(axis.text.x = element_text(size = 5, angle = 45, hjust = 1)) + 
+  xlab("城市") + 
+  ylab("價格(萬元)")
+```
+<br>
+
+**assumptions**
+<br>
+<br>
+<blockquote>
+The order in which parking space prices are arranged, from highest to lowest, is based on several factors and considerations:
+<br>
+Accessibility: Parking spaces that are easier to access and require less maneuvering, such as flat surface parking (坡道平面) or mechanical inclined parking (坡道機械), tend to have higher prices. These types of parking spaces offer convenience and ease of use, making them more desirable.
+<br>
+Floor Level: Parking spaces located on lower floors, such as ground-level parking (一樓平面), generally have higher prices compared to spaces on higher floors. This is because lower-level parking spaces offer convenience and proximity to building entrances, reducing the effort required for parking and accessing the building.
+<br>
+Special Features: Certain types of parking spaces, such as vertical lift parking (升降平面) or tower parking (塔式車位), often come with additional features or advantages that contribute to their higher prices. For example, vertical lift parking provides efficient use of space and can accommodate more vehicles, while tower parking offers enhanced security and dedicated parking spots.
+<br>
+Mechanical Systems: Parking spaces that involve mechanical systems, such as mechanical inclined parking (坡道機械) or mechanical lift parking (升降機械), require additional equipment and maintenance, which can increase their costs compared to simpler parking configurations.'
+</blockquote>
+<br>
+
+
+<br>
+<br>
+
+### Example2: Price ~ total floor number
+```{r, include = T, echo = F}
+library(stringr)
+
+chinese_numerals <- c("零", "一", "二", "三", "四", "五", "六", "七", "八", "九")
+chinese_tens <- c("", "十", "二十", "三十", "四十", "五十", "六十", "七十", "八十", "九十")
+chinese_hundreds <- c("", "一百", "二百", "三百", "四百", "五百", "六百", "七百", "八百", "九百")
+
+mapping_list <- list()
+
+for (i in 0:101) {
+  if (i == 0) {
+    chinese_num <- chinese_numerals[1]
+  } else {
+    units <- i %% 10
+    tens <- (i %/% 10) %% 10
+    hundreds <- (i %/% 100) %% 10
+    
+    if (hundreds == 1 && tens == 0 && units == 0) {
+      chinese_num <- chinese_hundreds[hundreds + 1]
+    } else if (tens == 1) {
+      chinese_num <- paste(chinese_hundreds[hundreds + 1], chinese_tens[tens + 1], chinese_numerals[units + 1], sep = "")
+    } else if (units == 0) {
+      chinese_num <- paste(chinese_hundreds[hundreds + 1], chinese_tens[tens + 1], sep = "")
+    } else {
+      chinese_num <- paste(chinese_hundreds[hundreds + 1], chinese_tens[tens + 1], chinese_numerals[units + 1], sep = "")
+    }
+  }
+  
+  mapping_list[[chinese_num]] <- i
+}
+
+
+
+
+
+```
+
+
+```{r, include=T, echo = F, message = F}
+
+# 主要建材 與價格關係
+floor_price_cor <- data.frame()
+
+for (real in names(all_city_real)){
+  #print(real)
+  f <- read.csv(all_city_real[real], encoding = "UTF-8")
+  #print(f)
+  f <- f[2:nrow(f),]
+
+  
+  tg_row <- which(substr(f$'總樓層數', 1, nchar(f$'總樓層數')-1)%in% names(mapping_list) & f$'總價元' != "0")
+  #print(tg_row)
+  f <- f[tg_row,]
+
+
+  len = nrow(f)
+  
+  floor_num <-  substr(f$'總樓層數', 1, nchar(f$'總樓層數')-1)
+  
+  
+  
+  
+  within_city_data <- data.frame(city = rep(real, times = len),
+                                 floor = sapply(floor_num, function(x) mapping_list[[x]]),
+                                 price = as.numeric(f$'總價元'))
+  
+  
+  
+  floor_price_cor <- rbind(floor_price_cor, within_city_data)
+}
+
+correlation <- cor(floor_price_cor$floor, floor_price_cor$price)
+
+```
+
+```{r, include = T, echo = F, out.width="200%", out.height = "120%"}
+p <- ggplot(floor_price_cor, 
+       aes(
+         x = floor,
+         y = price/10000,
+       ))+ 
+  geom_text(x = min(floor_price_cor$floor), y = max(floor_price_cor$price), label =  paste("R: ", round(correlation, 2)), hjust = 0, vjust = 1) +
+  geom_point(mapping = aes(color = city)) +
+  theme(axis.text.x = element_text(size = 5, hjust = 1)) + 
+  scale_x_log10() +
+  scale_y_continuous(limits = c(0, 20000)) +
+  geom_smooth() +
+  xlab("log(總樓層數)") + 
+  ylab("價格(萬元)")
+
+
+p
+
+```
+
+**assumptions**
+<br>
+<br>
+<blockquote>
+The correlation coefficient between the total number of floors and housing prices is 0.04, indicating a very weak relationship. This means that there is almost no association between the two variables. Other factors, such as location, size, or amenities, likely have a stronger impact on housing prices. It is important to consider additional variables that may influence housing prices to gain a more comprehensive understanding of the market.
+<br>
+
+**reason to take log-transformation:**
+<br>
+<br>
+The decision to take the log transformation on the data is motivated by the issue of data density in the lower range of floor numbers. By applying a logarithmic transformation, we can compress the scale of the data and reduce the skewness caused by the disproportionate concentration of observations in the lower floor numbers. This transformation helps to spread out the data points more evenly along the axis, making the distribution appear less skewed and allowing for better visualization and analysis. Additionally, taking the logarithm can help to linearize relationships and make the effects of changes in the floor numbers more interpretable.
+</blockquote>
+<br>
+<br>
+
+### Example 3: price ~ shifting level
+<br>
+```{r, include=T, echo = F}
+
+# 主要建材 與價格關係
+cur_price_cor <- data.frame()
+
+for (real in names(all_city_real)){
+  #print(real)
+  f <- read.csv(all_city_real[real], encoding = "UTF-8")
+  #print(f)
+  f <- f[2:nrow(f),]
+
+  
+  tg_row <- which(substr(f$'移轉層次', 1, nchar(f$'移轉層次')-1)%in% names(mapping_list) & f$'總價元' != "0")
+  #print(tg_row)
+  f <- f[tg_row,]
+
+
+  len = nrow(f)
+  
+  floor_num <-  substr(f$'移轉層次', 1, nchar(f$'移轉層次')-1)
+  
+  
+  
+  
+  within_city_data <- data.frame(city = rep(real, times = len),
+                                 cur = sapply(floor_num, function(x) mapping_list[[x]]),
+                                 price = as.numeric(f$'總價元'))
+  
+  
+  
+  cur_price_cor <- rbind(cur_price_cor, within_city_data)
+}
+
+correlation2 <- cor(cur_price_cor$cur, cur_price_cor$price)
+
+```
+
+```{r, include = T, echo = F, out.width="200%", out.height = "120%"}
+p <- ggplot(cur_price_cor, 
+       aes(
+         x = cur,
+         y = price/10000,
+       ))+ 
+  geom_text(x = 1, y = 50000, label =  paste("R: ", round(correlation2, 2)), hjust = 0, vjust = 1, size = 5) +
+  geom_point(mapping = aes(color = city)) +
+  theme(axis.text.x = element_text(size = 5, hjust = 1)) + 
+  geom_smooth() +
+  scale_x_log10() +
+  scale_y_continuous(limits = c(0, 50000)) +
+  xlab("log(移轉樓層數)") + 
+  ylab("價格(萬元)")
+
+p
+
+```
+<br>
+**assumptions**
+<br>
+<blockquote>
+<br>
+Since the Correlation within shifting levels (移轉層數) (0.17) is higher than total floor levels(總樓層數) (0.04), we can make a few assumptions
+<br>
+ Firstly, shifting level refers to the specific level within a building where a property is located, which can significantly impact its desirability and convenience. Buyers often prioritize properties located at more convenient levels, such as lower or middle floors, as they offer easy accessibility and reduced reliance on elevators. This preference leads to a more consistent demand and pricing pattern, resulting in a stronger correlation between shifting level and price.
+<br>
+On the other hand, the total floor level represents the overall height of a building and does not provide specific information about the desirability of a particular level. Higher floors may offer better views, but they can also be less desirable due to longer elevator wait times and increased noise levels. Additionally, total floor level alone does not capture other crucial factors influencing price, such as amenities, location, and property characteristics.
+<br>
+Therefore, the correlation between shifting level and price tends to be higher because shifting level directly reflects buyer preferences and impacts their willingness to pay, while total floor level lacks the specificity and relevance to buyers' preferences, resulting in a weaker correlation with price.
+<br>
+</blockquote>
+---
+
+
+
+
+
+
+
+
+## *Data Wrangling* {.tabset}
+<br>
+<br>
+
+### step 1. Mapping & Sorting 
+<blockquote>
+<br>
+  Before we really start to done the work on data wrangling, an ambiguous view on the further work is needed. 
+<br>
+  In the Very beginning, we had known the raw data origins from the open data of Taiwan Ministry of Interior is aligned by the order of seasons which in terms is 3 months amount of data covering in a directory, and there is a line plot in my mind tells me that it is a good trait to work with it. Hence, the properties will be remained.
+  
+<br> 
+    Thereafter, I know the data is intentionally splits into 3 kinds of transactions, which specifically speaking is real estate, presold real estate, and rental. That is also a good trait to subtract the huge amount of the data, and also clarify the type of transaction if want to have a map that is user-friendly. Hence the properties will be preserved.
+</blockquote>
+
+<!--**3 chunks to overwrite the data to original setup**-->
+```{r, data_path, include = F, echo = F, warning = F, cache = T, eval = F}
+path = "C:/Users/je604/OneDrive/桌面/大數據"
+dirname <- dir(path)
+abspath <- paste(path, "/", dirname, sep = "")
+
+each_file <- dir(abspath)
+
+whole_data = c()
+
+for (dirs in abspath){
+  
+  for (season_data in dir(dirs)){
+    #print(season_data)
+    file_path = paste(dirs, "/", season_data, sep = "")
+    whole_data <- append(whole_data, file_path)
+  }
+}
+```
+
+```{r, feature_path,include = F, echo = F, warning = F, cache = T, eval = F}
+# 4 types of data land, build, park, total
+land_data_path = str_subset(whole_data, pattern = "[a-z]_lvr_land_[a-z]_land.csv$")
+build_data_path = str_subset(whole_data, pattern = "[a-z]_lvr_land_[a-z]_build.csv$")
+park_data_path = str_subset(whole_data, pattern = "[a-z]_lvr_land_[a-z]_park.csv$")
+total_data_path = str_subset(whole_data, pattern = "[a-z]_lvr_land_[a-z].csv$")
+```
+
+```{r, move_file, include = F, echo = F, warning = F, cache = T, eval = F}
+path = "C:/Users/je604/OneDrive/桌面/大數據/land_data"
+
+land_data_s1 = grep("20220101_opendata/[a-z]_lvr_land_[a-z]_land.csv$", land_data_path)
+land_data_s2 = grep("20220301_opendata/[a-z]_lvr_land_[a-z]_land.csv$", land_data_path)
+land_data_s3 = grep("20220601_opendata/[a-z]_lvr_land_[a-z]_land.csv$", land_data_path)
+land_data_s4 = grep("20220901_opendata/[a-z]_lvr_land_[a-z]_land.csv$", land_data_path)
+
+for (files in 1:length(land_data_path)){
+  if (files %in% land_data_s1) file.copy(land_data_path[files], paste(path, "/", "season 1", sep = ""));
+  if (files %in% land_data_s2) file.copy(land_data_path[files], paste(path, "/", "season 2", sep = ""));
+  if (files %in% land_data_s3) file.copy(land_data_path[files], paste(path, "/", "season 3", sep = ""));
+  if (files %in% land_data_s4) file.copy(land_data_path[files], paste(path, "/", "season 4", sep = ""));
+}
+
+path = "C:/Users/je604/OneDrive/桌面/大數據/park_data"
+
+park_data_s1 = grep("20220101_opendata/[a-z]_lvr_land_[a-z]_park.csv$", park_data_path)
+park_data_s2 = grep("20220301_opendata/[a-z]_lvr_land_[a-z]_park.csv$", park_data_path)
+park_data_s3 = grep("20220601_opendata/[a-z]_lvr_land_[a-z]_park.csv$", park_data_path)
+park_data_s4 = grep("20220901_opendata/[a-z]_lvr_land_[a-z]_park.csv$", park_data_path)
+
+for (files in 1:length(park_data_path)){
+  if (files %in% park_data_s1) file.copy(park_data_path[files], paste(path, "/", "season 1", sep = ""));
+  if (files %in% park_data_s2) file.copy(park_data_path[files], paste(path, "/", "season 2", sep = ""));
+  if (files %in% park_data_s3) file.copy(park_data_path[files], paste(path, "/", "season 3", sep = ""));
+  if (files %in% park_data_s4) file.copy(park_data_path[files], paste(path, "/", "season 4", sep = ""));
+}
+
+path = "C:/Users/je604/OneDrive/桌面/大數據/build_data"
+
+build_data_s1 = grep("20220101_opendata/[a-z]_lvr_land_[a-z]_build.csv$", build_data_path)
+build_data_s2 = grep("20220301_opendata/[a-z]_lvr_land_[a-z]_build.csv$", build_data_path)
+build_data_s3 = grep("20220601_opendata/[a-z]_lvr_land_[a-z]_build.csv$", build_data_path)
+build_data_s4 = grep("20220901_opendata/[a-z]_lvr_land_[a-z]_build.csv$", build_data_path)
+
+for (files in 1:length(build_data_path)){
+  if (files %in% build_data_s1) file.copy(build_data_path[files], paste(path, "/", "season 1", sep = ""));
+  if (files %in% build_data_s2) file.copy(build_data_path[files], paste(path, "/", "season 2", sep = ""));
+  if (files %in% build_data_s3) file.copy(build_data_path[files], paste(path, "/", "season 3", sep = ""));
+  if (files %in% build_data_s4) file.copy(build_data_path[files], paste(path, "/", "season 4", sep = ""));
+}
+
+path = "C:/Users/je604/OneDrive/桌面/大數據/total_data"
+
+total_data_s1 = grep("20220101_opendata/[a-z]_lvr_land_[a-z].csv$", total_data_path)
+total_data_s2 = grep("20220301_opendata/[a-z]_lvr_land_[a-z].csv$", total_data_path)
+total_data_s3 = grep("20220601_opendata/[a-z]_lvr_land_[a-z].csv$", total_data_path)
+total_data_s4 = grep("20220901_opendata/[a-z]_lvr_land_[a-z].csv$", total_data_path)
+
+for (files in 1:length(total_data_path)){
+  if (files %in% total_data_s1) file.copy(total_data_path[files], paste(path, "/", "season 1", sep = ""));
+  if (files %in% total_data_s2) file.copy(total_data_path[files], paste(path, "/", "season 2", sep = ""));
+  if (files %in% total_data_s3) file.copy(total_data_path[files], paste(path, "/", "season 3", sep = ""));
+  if (files %in% total_data_s4) file.copy(total_data_path[files], paste(path, "/", "season 4", sep = ""));
+}
+
+```
+
+<br>
+
+### step 2. Choosing on the Variables
+<br><blockquote>
+    There are following 33 variables as follows 
+    ("The villages and towns urban district" "transaction sign" "land sector position building sector house number plate" "land shifting total area square meter" "the use zoning or compiles and checks" "the non-metropolis land use district" "non-metropolis land use" "transaction year month and day" "transaction pen number" "shifting level" "total floor number" "building state" "main use" "main building materials" "construction to complete the years" "building shifting total area" "Building present situation pattern - room" "building present situation pattern - hall" "building present situation pattern - health" "building present situation pattern - compartmented" "Whether there is manages the organization" "total price NTD" "the unit price (NTD / square meter)" "the berth category" "berth shifting total area square meter" "the berth total price NTD" "the note" "serial number" "main building area" "auxiliary building area" "balcony area" "elevator" "transaction number" "NA" "NA").
+<br>
+    We are picking out those variables relatable to our analysis, namely, affects more on prices. To approach the assumption, I would present some figures to visualize the correaltion.
+</blockquote><br>
+
+<blockquote>
+   Before actually done the visualization, We should first check the unique value inside, to get a pattern in our mind, and on the other hand found out some features.
+</blockquote>
+<br>
+<br>
+
+
+### step 3. Convert location data into longitude and latitude {.tabset}
+<blockquote>
+<br>
+   In order to reach the title achievement, we must introduce some Google service and some string convert achievement. If we take a closer look on the file name, we will found out the title before *_lvr_land* sync with title of ID number which indicates the city where the location located. Which can make our map more presentable onward. (Note that some of the *outer island* will not be considered in our cases, since the data size is too little to scale up, and most of them possess unspecific flaw, such as, unspecific address, na on the price. Hence, the data wrangling on the outer island and specific position will be omitted.)
+<br>
+</blockquote>
+
+```{r, data_amount, include = F, eval = T, warning = F}
+alphabat <- c()
+alphabat$id <- c("a", "b", "c", "d", "e", "f", "g", "h", "j", "k", "m", "n", "p", "q", "t", "u", "v", "x", "i", "o")
+
+alphabat$city <- c("臺北市", "臺中市", "基隆市", "臺南市", "高雄市", "新北市", "宜蘭縣", "桃園市", "新竹縣", "苗栗縣", "南投縣", "彰化縣", "雲林縣", "嘉義縣", "屏東縣", "花蓮縣", "臺東縣", "澎湖縣", "嘉義市", "新竹市")
+
+id_to_city <- c(
+                "a" = "臺北市",
+                "b" = "臺中市",
+                "c" = "基隆市",
+                "d" = "臺南市",
+                "e" = "高雄市",
+                "f" = "新北市",
+                "g" = "宜蘭縣",
+                "h" = "桃園市",
+                "j" = "新竹縣",
+                "k" = "苗栗縣",
+                "m" = "南投縣",
+                "n" = "彰化縣",
+                "p" = "雲林縣",
+                "q" = "嘉義縣",
+                "t" = "屏東縣",
+                "u" = "花蓮縣",
+                "v" = "臺東縣",
+                "x" = "澎湖縣",
+                "i" = "嘉義市",
+                "o" = "新竹市"
+)
+
+city_to_id <- c(
+                "臺北市" = "a",
+                "臺中市" = "b",
+                "基隆市" = "c",
+                "臺南市" = "d",
+                "高雄市" = "e",
+                "新北市" = "f",
+                "宜蘭縣" = "g",
+                "桃園市" = "h",
+                "新竹縣" = "j",
+                "苗栗縣" = "k",
+                "南投縣" = "m",
+                "彰化縣" = "n",
+                "雲林縣" = "p",
+                "嘉義縣" = "q",
+                "屏東縣" = "t",
+                "花蓮縣" = "u",
+                "臺東縣" = "v",
+                "澎湖縣" = "x",
+                "嘉義市" = "i",
+                "新竹市" = "o"
+)
+
+
+path = "C:/Users/je604/OneDrive/桌面/大數據/total_data/season 4"
+whole_data = file.path(path, dir(path))
+
+taipei_data_amount = str_subset(whole_data, pattern = "[a]_lvr_land_[a-z].csv$") %>% c() 
+taichung_data_amount = str_subset(whole_data, pattern = "[b]_lvr_land_[a-z].csv$") %>% c()  
+kilong_data_amount = str_subset(whole_data, pattern = "[c]_lvr_land_[a-z].csv$") %>% c()  
+tainan_data_amount = str_subset(whole_data, pattern = "[d]_lvr_land_[a-z].csv$") %>% c()   
+kaoshung_data_amount = str_subset(whole_data, pattern = "[e]_lvr_land_[a-z].csv$") %>% c()   
+newtaipei_data_amount = str_subset(whole_data, pattern = "[f]_lvr_land_[a-z].csv$") %>% c()   
+yilan_data_amount = str_subset(whole_data, pattern = "[g]_lvr_land_[a-z].csv$") %>% c()   
+taoyun_data_amount = str_subset(whole_data, pattern = "[h]_lvr_land_[a-z].csv$") %>% c()   
+old_hsinchu_data_amount = str_subset(whole_data, pattern = "[j]_lvr_land_[a-z].csv$") %>% c()   
+miaoli_data_amount = str_subset(whole_data, pattern = "[k]_lvr_land_[a-z].csv$") %>% c()   
+old_taichung_data_amount = str_subset(whole_data, pattern = "[l]_lvr_land_[a-z].csv$") %>% c()  
+nantou_data_amount = str_subset(whole_data, pattern = "[m]_lvr_land_[a-z].csv$") %>% c()  
+changhua_data_amount = str_subset(whole_data, pattern = "[n]_lvr_land_[a-z].csv$") %>% c()  
+yunlin_data_amount = str_subset(whole_data, pattern = "[p]_lvr_land_[a-z].csv$") %>% c()  
+old_jiayi_data_amount = str_subset(whole_data, pattern = "[q]_lvr_land_[a-z].csv$") %>% c()  
+old_tainan_data_amount = str_subset(whole_data, pattern = "[r]_lvr_land_[a-z].csv$") %>% c()  
+old_kaoshung_data_amount = str_subset(whole_data, pattern = "[s]_lvr_land_[a-z].csv$") %>% c()  
+pintung_data_amount = str_subset(whole_data, pattern = "[t]_lvr_land_[a-z].csv$") %>% c()  
+hualiang_data_amount = str_subset(whole_data, pattern = "[u]_lvr_land_[a-z].csv$") %>% c()  
+taitung_data_amount = str_subset(whole_data, pattern = "[v]_lvr_land_[a-z].csv$") %>% c()  
+punghu_data_amount = str_subset(whole_data, pattern = "[x]_lvr_land_[a-z].csv$") %>% c()  
+yanming_data_amount = str_subset(whole_data, pattern = "[y]_lvr_land_[a-z].csv$") %>% c()  
+kinman_data_amount = str_subset(whole_data, pattern = "[w]_lvr_land_[a-z].csv$") %>% c()  
+lianjian_data_amount = str_subset(whole_data, pattern = "[z]_lvr_land_[a-z].csv$") %>% c()  
+jiayi_data_amount = str_subset(whole_data, pattern = "[i]_lvr_land_[a-z].csv$") %>% c()  
+hsinchu_data_amount = str_subset(whole_data, pattern = "[o]_lvr_land_[a-z].csv$") %>% c()  
+
+
+
+
+find_dataamount <- function(ls_datas){
+  amount = 0
+  for (file in ls_datas){
+    f = read.csv(file)
+    amount = amount + nrow(f)
+  }
+  amount
+}
+
+data_amount <- c(
+                  find_dataamount(taipei_data_amount),
+                  find_dataamount(taichung_data_amount),
+                  find_dataamount(kilong_data_amount),
+                  find_dataamount(tainan_data_amount),
+                  find_dataamount(kaoshung_data_amount),
+                  find_dataamount(newtaipei_data_amount),
+                  find_dataamount(yilan_data_amount),
+                  find_dataamount(taoyun_data_amount),
+                  find_dataamount(old_hsinchu_data_amount),
+                  find_dataamount(miaoli_data_amount),
+                  find_dataamount(nantou_data_amount),
+                  find_dataamount(changhua_data_amount),
+                  find_dataamount(yunlin_data_amount),
+                  find_dataamount(old_jiayi_data_amount),
+                  find_dataamount(pintung_data_amount),
+                  find_dataamount(hualiang_data_amount),
+                  find_dataamount(taitung_data_amount),
+                  find_dataamount(punghu_data_amount),
+                  find_dataamount(jiayi_data_amount),
+                  find_dataamount(hsinchu_data_amount)
+)
+```
+
+<!--把門牌號變成經緯度-->
+
+```{r, converlon, echo = F, cache = T, eval = F}
+path = "C:/Users/je604/OneDrive/桌面/大數據/total_data/season 4"
+setwd(path)
+whole_datas = dir(path)
+
+geo_return <- function(addr){
+  
+  register_google(key = "AIzaSyAxxZHBLtmWWiUqmUSySBlSxYc8tRaIv0Q")
+  geocode_result <- geocode(addr)
+  latitude <- geocode_result$lat
+  longitude <- geocode_result$lon
+  geo_info <- c(longitude, latitude)
+}
+
+path = "C:/Users/je604/OneDrive/桌面/大數據/tidy_data"
+
+for (file in whole_datas[63]){ # whole datas size : 62 預估有20萬~30萬筆資料，要分開跑才不會爆掉 1 2 3 4 有21000筆 總共有11萬筆資料 一秒api 可以跑5筆 電腦一次大概可以跑12000~13000筆資料 大概要跑2.2萬秒也就是6小時才能跑完全部資料 進度 : 要跑 63 --over
+  f = read.csv(file, encoding = "UTF-8")
+  addr_list <- f[,3]
+  loc <- sapply(addr_list, geo_return)
+  f$lon <- loc[1,]
+  f$lat <- loc[2,]
+  filepath <- file.path(path, file)
+  write_excel_csv(f, filepath)
+}
+
+```
+
+<!--a is real estate case, b is pre-sold estate case,c stands for real estate rental case-->
+<!--a 結尾有10年資料但非常不全-->
+<!--b 結尾只有3個月左右但非常齊全>
+<!--c 結尾也是3個月左右且較為齊全-->
+```{r, include = T, echo = F, eval = T, warning = F, cache = F}
+path = "C:/Users/je604/OneDrive/桌面/大數據/tidy_data"
+
+file_path <- file.path(path, dir(path))
+whole_datas = dir(path)
+
+# No data : 臺中縣, 臺南縣, 高雄縣, 陽明山
+
+
+real_estate_tg <- str_subset(whole_datas, pattern = "[a-z]_lvr_land_[a].csv$") %>% c()
+real_estate_filepath <- file.path(path, real_estate_tg)
+
+presold_estate_tg <- str_subset(whole_datas, pattern = "[a-z]_lvr_land_[b].csv$") %>% c()
+presold_estate_filepath <- file.path(path, presold_estate_tg)
+
+rental_estate_tg <- str_subset(whole_datas, pattern = "[a-z]_lvr_land_[c].csv$") %>% c()
+rental_estate_filepath <- file.path(path, real_estate_tg)
+
+```
+
+
+<!--shiny 表示缺失值-->
+<!--oldTaichung, oldTainan, oldKaohsiung, yangming no data-->
+
+#### comment on total data loss 
+
+<br>
+<blockquote>
+|    Since we would need to put the data on the map using the longitude, and the latitude. Hence, it becomes important to know what is the level of data preservation. 
+|    In addition, we need to know is there any loss on other data (maybe cause by many reason, such as, unicode problem, error on read file), especially the process of R is significantly unfriendly to data contains Manderine symbols
+
+</blockquote>
+<br>
+```{r, include = T, echo = F, warning = F}
+path = "C:/Users/je604/OneDrive/桌面/大數據/tidy_data"
+all_files <- dir(path)
+
+ct <- c()
+loss_percentage <- c()
+for (i in letters[1:26]){
+  
+  if (i %in% alphabat$id){
+    string = paste("[", i, "]_lvr_land_[a-z].csv$", sep = "")
+    tg_file <- str_subset(all_files, pattern = string)[1]
+    file_path = file.path(path, tg_file)
+    file_na <- read.csv(file_path, encoding = "UTF-8")[35]
+    #print(paste("Percentage of NA data in", id_to_city[i], "is :", round(sum(is.na(file_na))*100/nrow(file_na), 2), "%"))
+    ct <- append(ct, id_to_city[i])
+    loss_percentage <- append(loss_percentage, paste(round(sum(is.na(file_na))*100/nrow(file_na), 2), "%"))
+  }
+  
+}
+df <- data.frame("城市名稱 : " = ct,
+                 "經緯度資料損失比例" = loss_percentage 
+                )
+
+df %>% kable(row.names = F) %>% kable_styling %>% scroll_box("200px")
+
+```
+
+
+
+#### Map of total data loss
+
+<br>
+<blockquote>
+<br>
+|   According to the loss on whole data map, it is glad to save, we preserve most of our data after conversion.
+</blockquote>
+<br>
+```{r, shiny_app_1, include = T, echo = F, cache = F, warning = F}
+path = "C:/Users/je604/OneDrive/桌面/大數據/tidy_data"
+all_files <- dir(path)
+
+case_to_order <- c("不動產" = 1, "預售屋" = 2, "租賃" = 3)
+
+regex_id <- function(city_alpha){
+  pattern = paste0("[", city_alpha, "]_lvr_land_[a-z]\\.csv$", sep = "")
+  pattern
+}
+
+get_file_path <- function(city_name){
+  
+  file.path(path, grep(pattern= regex_id(city_to_id[city_name]), x = all_files, value = T))
+}
+
+####========每個城市所含有的房地產資料類型
+get_case_condition <- function(city_name){
+  container <- get_file_path(city_name)
+  city_alpha <- city_to_id[city_name]
+  
+  real_pattern = paste("^C:/Users/je604/OneDrive/桌面/大數據/tidy_data/[", city_alpha,"]_lvr_land_a.csv$", sep = "")
+  
+  presold_pattern =paste ("^C:/Users/je604/OneDrive/桌面/大數據/tidy_data/[", city_alpha,"]_lvr_land_b.csv$", sep = "")
+  
+  rental_pattern = paste("^C:/Users/je604/OneDrive/桌面/大數據/tidy_data/[", city_alpha,"]_lvr_land_c.csv$", sep = "")
+  
+  result <- c()
+  for (i in 1: length(container)){
+    #print(real_pattern)
+    if (grepl(real_pattern, container[i])) result <- append(result, "不動產")
+    
+    #print(presold_pattern)
+    if (grepl(presold_pattern, container[i])) result <- append(result, "預售屋")
+    
+    #print(rental_pattern)
+    if (grepl(rental_pattern, container[i])) result <- append(result, "租賃")
+  }
+  result
+}
+
+
+
+ui <- fluidPage(
+  titlePanel("城市不動產交易資料(不含型別)缺失情況"),
+  
+  sidebarLayout(
+    
+    position = "left",
+    
+    sidebarPanel(
+        selectInput("city_name", label = "選擇城市 : ", choice = c(alphabat$city), selected  = "臺北市"),
+        
+        uiOutput("case_select")
+        ),
+        
+  
+    mainPanel(
+        plotOutput("na_without_type")
+        #plotOutput("na_with_type")
+      )
+    )    
+  )
+
+server <- function(input, output, session){
+  #
+  case_choices <- reactive({
+    req(input$city_name)
+    get_case_condition(input$city_name)
+  })
+  
+  #
+  output$case_select <- renderUI({
+    req(case_choices())
+
+    selectInput("case", label = "交易標的", choices = case_choices(), selected = case_choices()[1])   # withSpinner 
+  })
+  
+  
+  
+  output$na_without_type <- renderPlot({
+    
+    suppressWarnings({
+        req(input$city_name)
+        file <- get_file_path(input$city_name)[case_to_order[input$case]]  #[case_to_order[input$case]] 把這個直接改成1會是只有不動產
+        naniar::vis_miss(read.csv(file))
+    })
+})
+  #output$na_with_type <- renderPlor({
+  #  req(input$city_name)
+  #  file <- get_file_path(input$city_name)[1]
+  #  vis_dat(read.csv(file))
+  #})
+  
+  options = list(height = 700)
+}
+shinyApp(ui = ui, server = server)
+
+```
+
+
+<br>
+<br>
+
+---
+
+### step4. Observe the data density
+<br>
+<blockquote>
+|   After all those transformation and convertion on the data, we can observe the aggregate case on the real estate market so far had aggregated. 
+</blockquote>
+<br>
+
+```{r ,include = T, echo = F, eval = T, fig.width = 10}
+df <- data.frame(
+                  x = alphabat$city, 
+                  y = data_amount
+                  )
+
+df %>%
+  ggplot(aes(fct_reorder(x, desc(-y)), y, col = x, fill = x)) +  # 可以在aes外用fill來表示dummy variable
+  geom_col(position = position_dodge(), alpha = .8) +
+  labs(x = "縣市名稱", y = "累積不動產交易案例", title = "資料分布") + coord_flip()
+
+```
+
+### {-}
+
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+
+
+---
+
+<br>
+<br>
+<br>
+<br>
+
+## *Visualizations* {.tabset}
+<!--I want it 2 maps one is a sidebar one, the other shows the exactly whole scene-->
+
+```{r, include - F, echo = F, cache = F}
+path = "C:/Users/je604/OneDrive/桌面/大數據/tidy_data"
+all_files <- dir(path)
+case_to_order <- c("不動產" = 1, "預售屋" = 2, "租賃" = 3)
+case_to_alpha = c("不動產" = "a", "預售屋" = "b", "租賃" = "c")
+
+
+get_filepath_with_case <- function(city_name, case_type){
+  filepath = file.path(path, grep(pattern= regex_id(city_to_id[city_name]), x = all_files, value = T))
+  city_alpha = city_to_id[city_name]
+  case_alpha = case_to_alpha[case_type]
+  
+  f <- str_subset(filepath, pattern = paste0(path, "/", "[", city_alpha, "]_lvr_land_[", case_alpha, "].csv$", sep = ""))
+  f
+  
+}
+
+get_district <- function(city_name, case_type){
+  city_case_path = get_filepath_with_case(city_name, case_type)
+  f <- read.csv(city_case_path)
+  district_name <- f[2: nrow(f), 1] %>% unique() %>% c()
+  district_name
+}
+
+
+```
+
+
+
+```{r, app2_ui_server, include = F, echo = F, cache = F}
+
+path = "C:/Users/je604/OneDrive/桌面/大數據/tidy_data"
+all_files <- dir(path)
+all_file_path = file.path(path, all_files)
+
+
+# colr by case function, need to use shinyjs to hide the output and make it a fullscreen one
+ui2 <- fluidPage(
+  titlePanel(h2("A Minor Version of Map")),
+  sidebarLayout(
+    # sidebar anel for city
+    position = "left",
+    sidebarPanel(
+      selectInput("city", h4("選擇城市: "), choices = c(alphabat$city), selected = c(alphabat$city)[1]),
+    
+      br(),
+      # real estate, presold estate, or rental estate
+      uiOutput("type"),
+      
+      br(),
+      # side bar panel for district
+      uiOutput("district")
+      
+      
+    
+      
+      
+    ),
+    
+    #main panel
+    mainPanel(
+      tabsetPanel(type = "tabs",
+                  tabPanel("Map", leafletOutput("map"))
+      )
+    )
+  )
+)
+
+
+
+
+```
+<br>
+<br>
+<br>
+
+  **The absent on the data of area of the land is to severe to handle. Hence, we ignore it.**
+
+```{r, app2_server, include = T, echo = F, cache = F, warning=F, message=F}
+server2 <- function(input, output, session){
+  
+  case_choices <- reactive({
+    req(input$city)
+    get_case_condition(input$city)
+  })
+  
+  district_choices <- reactive({
+    req(input$city)
+    req(input$case)
+    get_district(input$city, input$case)
+    
+  })
+  
+  
+  output$type <- renderUI({
+    req(case_choices)
+
+    selectInput("case", label = h4("交易標的"), choices = case_choices(), selected = case_choices()[1])
+    
+  })
+  
+  
+  output$district <- renderUI({
+    req(district_choices)
+    
+    selectInput("district_name", label = h4("區/鎮/市/鄉"), choices = district_choices(), selected = district_choices()[1])
+  })
+  
+  
+  ############# Interactive map
+  
+  # create the map :: successfully put on
+  output$map <- renderLeaflet({
+    leaflet() %>%
+      addTiles() %>%
+      setView(lng = 120.5825, lat = 23.5, zoom = 7)
+  })
+  
+  # dynamically change the file to read
+  city_case_filepath <- reactive({
+    req(input$city)
+    req(input$case)
+    
+    city_name <- input$city
+    case_type <- input$case
+    
+    file_path <- get_filepath_with_case(city_name, case_type)
+    file_path
+  })
+  
+  city_case_file <- reactive({
+    req(input$city)
+    req(input$case)
+    req(city_case_filepath)
+    
+    path = city_case_filepath()
+    #print(path) # path 是有東西的 且可以執行 選台中時: C:/Users/je604/OneDrive/桌面/大數據/tidy_data/b_lvr_land_a.csv
+    f = read.csv(path)
+    #print(f) works fine
+    f
+  })
+  
+  file_with_all_info <- reactive({
+    req(input$city)
+    req(input$case)
+    req(input$district_name)
+    req(city_case_file())
+    
+    district <- input$district_name
+    city_case_file_data <- city_case_file()
+    
+    #print(city_case_file_data$'鄉鎮市區' == district) # this works well
+    #print(city_case_file_data[city_case_file_data$'鄉鎮市區' == district,]) #這個有大問題，他跑不出來
+    district_f_withNA <- city_case_file_data[city_case_file_data$'鄉鎮市區' %in% district,]
+    #print(district_f_withNA)
+    tg_row <- which(district_f_withNA$'單價元平方公尺' != "" & district_f_withNA$'單價元平方公尺' != 0)
+    district_f <- district_f_withNA[tg_row,]
+    f <- na.omit(district_f)
+    #print(f)
+    f
+  })
+  
+
+  
+  # show on map
+  FilesShow <- observeEvent(
+    c(input$city, input$case, input$district_name),
+    {
+      req(input$city)
+      req(input$case)
+      req(input$district_name)
+      req(file_with_all_info())
+      
+      f <- file_with_all_info()
+      #print(f) #加 print 之後才能運行，你問我為什麼我也不知道
+      price <- as.numeric(f$'單價元平方公尺')
+      
+      
+      radius = price * 10/max(price)
+    
+    
+      longitude <- f$lon
+      latitude <- f$lat
+      #print(longitude)
+      #print(latitude)
+      
+      case_color <- c("不動產" = "red", "預售屋" = "blue", "租賃" = "purple")
+      
+      color = case_color[[input$case]]
+      #print(color)
+      
+     
+      
+      # draw something on map
+      leafletProxy("map", data = f) %>%
+                      clearShapes() %>%
+                      setView(longitude[2], latitude[2], zoom = 14) %>%
+                      addCircles(~longitude, ~latitude, fillOpacity = .6, color = color, fillColor = color, radius = ~radius*8)
+                    
+    })
+  
+  
+  showlocatepop <- function(f, case_type, lng, lat, id){
+    f <- f[!(is.na(f$lon)),]
+    price <- as.numeric(f$'單價元平方公尺')
+    #print(price)
+    price_pr = rank(price) #轉換成PR值
+    #print(price_pr)
+    #print(price_pr)
+    
+    row_index <- which((f$lon == lng)&(f$lat == lat))[1] #可能會大於1
+    
+    selectlocate <- f[row_index,]
+    #print(selectlocate)
+    print(price_pr[row_index])
+    
+      
+    if (case_type == "不動產"){
+    content <- as.character(tagList(
+      
+        
+      tags$h4("單位價格區域排名 : ", length(price) - price_pr[row_index] + 1, " out of ",length(price)),
+      tags$br(),
+      
+      tags$strong(HTML(sprintf("每平方公尺價格: %s 元, ", selectlocate$"單價元平方公尺"))),
+      tags$br(),
+      tags$strong(HTML(sprintf("地址: %s, ", selectlocate$"土地位置建物門牌"))),
+      tags$br(),
+      tags$strong(HTML(sprintf("交易標的: %s ", selectlocate$"交易標的"))),
+      
+      tags$br(),
+        
+      sprintf("土地移轉面積 : %s ㎡", as.double(selectlocate$"土地移轉總面積平方公尺")),
+      tags$br(),
+      sprintf("總價 : %s萬元", as.integer(selectlocate$"總價元")/10000),
+      tags$br(),
+      ))
+    } else if (case_type == "預售屋"){
+      content <- as.character(tagList(
+      
+        
+      tags$h4("單位價格區域排名 : ", length(price) - price_pr[row_index] + 1, " out of ",length(price)),
+      tags$br(),
+      
+      tags$strong(HTML(sprintf("每平方公尺價格: %s 元,", selectlocate$"單價元平方公尺"))),
+      tags$br(),
+      tags$strong(HTML(sprintf("地址: %s, ", selectlocate$"土地位置建物門牌"))),
+      tags$br(),
+      tags$strong(HTML(sprintf("交易標的: %s ", selectlocate$"交易標的"))),
+      tags$strong(HTML(sprintf("交易棟數: %s", selectlocate$'交易筆棟數'))),
+      
+      tags$br(),
+        
+      sprintf("土地移轉面積 : %s ㎡", as.double(selectlocate$"土地移轉總面積平方公尺")),
+      tags$br(),
+      sprintf("總價 : %s萬元", as.integer(selectlocate$"總價元")/10000),
+      tags$br(),
+      
+        
+      ))
+    } else{
+      content <- as.character(tagList(
+      
+        
+      tags$h4("單位價格區域排名 : ", length(price) - price_pr[row_index] + 1, " out of ",length(price)),
+      tags$br(),
+      
+      
+      tags$strong(HTML(sprintf("地址: %s, ", selectlocate$"土地位置建物門牌"))),
+      tags$br(),
+      tags$strong(HTML(sprintf("交易標的: %s ", selectlocate$"交易標的"))),
+      tags$strong(HTML(sprintf("交易棟數: %s", selectlocate$'租賃筆棟數'))),
+      
+      tags$br(),
+        
+      sprintf("土地移轉面積 : %s ㎡", as.double(selectlocate$"土地移轉總面積平方公尺")),
+      tags$br(),
+      sprintf("總價 : %s元", as.integer(selectlocate$"總額元")),
+      
+        
+      ))
+    }
+    
+    leafletProxy("map") %>% addPopups(selectlocate$lon, selectlocate$lat, content, layerId = id)
+      
+    
+  }
+  
+  
+  
+  observe({
+    
+    req(input$city)
+    req(input$case)
+    req(input$district_name)
+    req(file_with_all_info())
+    
+    case_type = input$case
+    #print(case_type)
+    
+    
+    leafletProxy("map") %>% clearPopups()
+    event <- input$map_shape_click
+    #print(event)
+    #print(event$lat)
+    #print(event$lng)
+    
+    if (is.null(event)) return()
+    
+    isolate({
+      f <- file_with_all_info()
+      #print(f)
+      lng <- event$lng[1]
+      lat <- event$lat[1]
+      locate <- c(event$lng[1], event$lat[1])
+      layerId <- paste0(lng, "-", lat)
+      
+      showlocatepop(f, case_type, event$lng[1], event$lat[1], layerId)
+    })
+    
+    
+    
+    
+  })
+  
+  
+  
+}
+```
+
+```{r, include = T, echo = F, cache = F, warning = F, message = F}
+shinyApp(ui2, server2)
+```
+<br>
+<br>
+[tap to see full screen](http://127.0.0.1:4955/)
+
+
+<br>
+<br>
+
+---
+
+## *Answer of the questions* {.tabset}
+<br>
+<br>
+
+### Where you get your project ideas?
+<br>
+<blockquote>
+  The chosen on this topic is originally by the reason that we had take another course called **"Real Estate Investment and Market Analysis"**, which intrigued us to start the project, It turns out that the analysis done on the real estate property are totally apart from the others. Pluses, we often assume the variables we want to do regressions are independent. However, it is never in the case of real estate, because the price of a house is highly correlated with adjacent estates. Thus, the step of eliminating endogeneity turns out to be significantly important.
+  *However, it eventually failed. Because the loading of data wrangling is significantly enormous.*
+</blockquote>
+<br>
+
+### How many new packages and functions are used?
+
+<br>
+<blockquote>
+In the progress of this project, I had use some new packages that didn't be taught in class, such as, ***leaflet, shiny, stringr, filesstrings, reticulate, ggmap, utf8, writexl, naniar, visdat, DT, shinydashboard, RColorBrewer, shinymaterial, shinyjs, htmlwidgets***
+</blockquote>
+<br>
+
+In addition, some new functions are also introduced, such as, ***"components under leaflet and shiny ", "suppressWarnings", "stringr", "writexl", "reticulate::import", "vismiss"***
+<br>
+
+In the packages of leaflet basically gives you an interactive map, and shiny are well known for the fancy stuff. The combinations of those 2 are just magical.
+the others are mostly used to handle the error that may encounter while compiling chinese data, some others, such as, reticulate, make the RStudio complior becomes more flexible to compile other programming languages.
+
+
+###  What is the most difficult part of your analysis?
+
+<br>
+<blockquote>
+
+The most challenging part throughout the project will definitely be the data wrangling, since the raw data scratch out by the government are bulky and clumsy. In addition, R is a kind of programming language not really friendly to data contains language other than English. Hence, it turns out to be the most difficult part. It also includes something such as geo_transforming, which returns me some longitude and latitude data that makes my project doable. However, the time takes to transforming on the data is unimaginably tremendous. Thus, we will say it is the worst part to undergone during the project.
+
+
+**Furthermore, the project is initially setting up with the goal to make both prediction and visualization. However, th progress in vain. Hence, we decided to efface the appearance of calculating and predicting, and make it a possible future, that one day we will implement the funciton inside the program.**
+
+Lastly, the interactivity of this program is unbelievably high. almost all of the visualizations components can be controlled, you can even check the price of your nearby location by some simple select, and we as well spent a lot of time to figure out how to make the project be runnable.
+
+
+
+</blockquote>
+<br>
+  
+
+
+
+<br>
+<br>
+
+
+<!--
+**///做一個NA的heatmap**
+**///NOTE : 發現只要用total data的season 4就可以做了觘觘觘**
+**///NOTE : TEST CORREALTIONSHIP WITHIN CHOSEN VARIABLES AND PRICES**
+**///NOTE : 公寓跟華夏有什麼差**
+**///NOTE : 總樓層數越高房價越貴 : 對低層樓住戶也會有影響**
+**///NOTE : 估計資料的分布型態 潭北有多少筆，台中有多少筆** 這樣才可以知道要分多少段跑才可以不會讓R爆掉
+**///NOTE : 經緯度回傳的NA值** X座標是縣市 Y座標是NA個數
+**///NOTE : variables 換成中文**-->
+
+
+
+---
+
+## *References* {.tabset}
+<br>
+  <h4>Data Source:</h4>
+<br>
+<blockquote>
+    Kaggle:
+<br>
+      1.   <https://www.kaggle.com/datasets/chrischien17/taiwan-taipei-city-real-estate-transaction-records>
+<br>
+    Taiwan Open Data: 
+<br>
+      2. <https://plvr.land.moi.gov.tw/Main>
+<br>
+</blockquote>
+  Thesis:
+
+<br>
+<blockqoute>
+      1. <https://math.ucsd.edu/sites/math.ucsd.edu/files/undergrad/honors-program/honors-theses/2019-2020/Omar_Vazquez_Honors_Thesis.pdf>
+</blockquote>
+<br>
+
+
+<br>
+<br>
+  Help:
+<blockquote>
+<br>
+      1. <https://medium.com/@kstseng/r-markdown-template-a4b0449a56d5>
+<br>
+      2. <https://blog.csdn.net/m0_71510787/article/details/126604772?spm=1001.2101.3001.6650.1&utm_medium=distribute.pc_relevant.none-task-blog-2%7Edefault%7ECTRLIST%7ERate-1-126604772-blog-130017690.235%5Ev36%5Epc_relevant_anti_vip_base&depth_1-utm_source=distribute.pc_relevant.none-task-blog-2%7Edefault%7ECTRLIST%7ERate-1-126604772-blog-130017690.235%5Ev36%5Epc_relevant_anti_vip_base&utm_relevant_index=2>
+<br>
+</blockquote>
+
+
+
+
+
+
+
+
+
+
